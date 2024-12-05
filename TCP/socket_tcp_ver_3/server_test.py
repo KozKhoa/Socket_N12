@@ -181,8 +181,8 @@ def handle_client(conn, addr):
     finally:
         conn.close()
         
-# ip = "127.0.0.0"
-ip = socket.gethostbyname(socket.gethostname())
+ip = "127.0.0.0"
+# ip = socket.gethostbyname(socket.gethostname())
 print(ip)
 port = int(input("PORT = "))
 
