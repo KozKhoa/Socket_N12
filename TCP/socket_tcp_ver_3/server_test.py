@@ -15,6 +15,20 @@ def min(a, b):
         return a
     return b
 
+
+def getAvailablePort(ip = str(), start = int()):
+    ports = []  
+    port = start
+    while len(ports) < 4:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((ip, port))
+                ports.append(port)
+            except:
+                pass
+        port += 1
+    return ports
+
 class p2p:
     ip = ""
     port = 0
@@ -99,18 +113,14 @@ def sendFile(conn, fileName, fileDir, ip, ports):
 
 def requireFile(conn, fileName, ip, port):
     soc = []
-    ports = []
     msg = MSG_CLIENT_REQUIRE_FILE + '@' + fileName
 
-    for i in range(0, 4):
-        socket = p2p(ip, 0)
-        socket.soc.bind(('', 0))
-        port = socket.soc.getsockname()[1]
-        socket.port = port
-        socket.fileName = f"{fileName} part {i + 1}"
+    ports = getAvailablePort(ip, port + 1, port + 50)
 
+    for i in range(0, 4):
+        socket = p2p(ip, ports)
+        socket.fileName = f"{fileName} part {i + 1}"
         soc.append(socket)
-        ports.append(port)
 
     for i in range(0, 4):
         msg += '@' + f"{ports[i]}"
@@ -168,11 +178,14 @@ def handle_client(conn, addr):
                 fileDir = 'server_asset/' + fileName
                 if fileName == 'server_asset.json':
                     fileDir =  fileName
+
+                client_ip = msg[2]
                 ports = []
+    
                 for i in range(0, 4):
-                    port = int(msg[i + 2])
+                    port = int(msg[i + 3])
                     ports.append(port)
-                sendFile(conn, fileName, fileDir, ip, ports)
+                sendFile(conn, fileName, fileDir, client_ip, ports)
             else:
                 print(f"Disconnected with {addr}")
                 break
@@ -181,8 +194,8 @@ def handle_client(conn, addr):
     finally:
         conn.close()
         
-ip = "127.0.0.0"
-# ip = socket.gethostbyname(socket.gethostname())
+# ip = "127.0.0.0"
+ip = socket.gethostbyname(socket.gethostname())
 print(ip)
 port = int(input("PORT = "))
 
