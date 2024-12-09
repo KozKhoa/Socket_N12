@@ -3,6 +3,8 @@ import os
 import threading
 import time
 import json
+import signal
+import sys
 
 FORMAT = "utf8"
 END = "<<end>>".encode(FORMAT)
@@ -10,11 +12,17 @@ MSG_CLIENT_REQUIRE_FILE = 'client_requrie_file'
 MSG_CLIENT_REQUIRE_JSON_FILE = 'client_require_list_of_file'
 ACK = "<<ack>>".encode(FORMAT)
 
+def signal_handel(sig, frame):
+    delete = "\033[2K"
+    print(f"{delete}\r{'-' * 20}")
+    print("[STOP] Stop the program")
+    print(f"{delete}\r{'-' * 20}")
+    sys.exit(0)
+
 def min(a, b):
     if a < b:
         return a
     return b
-
 
 def getAvailablePort(ip = str(), start = int()):
     ports = []  
@@ -33,13 +41,9 @@ class p2p:
     ip = ""
     port = 0
     soc = None
-    format = "utf8"
-    ACK = "<<ack>>".encode(format)
     conn = None
     addr = None
-
     fileName = ""
-
     return_recv_data = None
 
     def __init__(self, IP, PORT) -> None:
@@ -54,11 +58,9 @@ class p2p:
         while True:
             try:
                 self.soc.connect((self.ip, self.port))
-                # print("Connected !")
                 break
             except Exception as e:
-                # print("Connecting ... ")
-                i = 1
+                pass
     def sendData(self, conn, data = b"", fileName = str()):
         size = f"{len(data)}"
         for i in range(len(size), 100):
@@ -68,18 +70,6 @@ class p2p:
         ###
         conn.sendall(data)
         conn.sendall(END)
-    def recvData(self):
-        data = b""
-        DONE = False
-        while not DONE:
-            chunk = self.conn.recv(1024 * 1024)
-            if chunk[-7:] == END:
-                DONE = True
-                chunk = chunk[:-7]
-            data += chunk
-            # print(f"\Downloading {self.fileName} ... {min(100, round((len(data) / 1) * 100, 0))}%", end="")
-        self.return_recv_data = data
-        return data
 
 def sendFile(conn, fileName, fileDir, ip, ports):
     soc = []
@@ -110,50 +100,6 @@ def sendFile(conn, fileName, fileDir, ip, ports):
         soc[i].soc.close()
 
     soc = []        
-
-def requireFile(conn, fileName, ip, port):
-    soc = []
-    msg = MSG_CLIENT_REQUIRE_FILE + '@' + fileName
-
-    ports = getAvailablePort(ip, port + 1, port + 50)
-
-    for i in range(0, 4):
-        socket = p2p(ip, ports)
-        socket.fileName = f"{fileName} part {i + 1}"
-        soc.append(socket)
-
-    for i in range(0, 4):
-        msg += '@' + f"{ports[i]}"
-    conn.sendall(msg.encode(FORMAT))
-    for i in range(0, 4):
-        soc[i].listen()
-
-    return (soc, ports)
-    
-def recvFile(conn, fileName = str(), saveDir = str(), ip = str(), soc = socket, ports = list):
-    
-    thread = []
-    for i in range(0, 4):
-        temp = threading.Thread(target=soc[i].recvData)
-        temp.start()
-        thread.append(temp)
-
-    packet = [b""]
-    for i in range(0, 4):
-        thread[i].join()
-        data = soc[i].return_recv_data
-        packet.append(data)
-    data = b""
-    for i in packet:
-        data += i
-
-    with open(saveDir,"wb") as f:
-        f.write(data)
-        f.close()
-
-    for i in range(0, 4):
-        soc[i].conn.close()
-    soc = None
    
 def updateJsonFile():
     while True:
@@ -194,21 +140,26 @@ def handle_client(conn, addr):
     finally:
         conn.close()
         
-# ip = "127.0.0.0"
-ip = socket.gethostbyname(socket.gethostname())
-print(ip)
-port = int(input("PORT = "))
+try:
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
+    signal.signal(signal.SIGINT, signal_handel)
 
-
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.bind((ip, port))
-server.listen()
-
-print("Waiting ... ")
-threading.Thread(target=updateJsonFile).start()
-while True:
-    conn, addr = server.accept()
-    print(f"Connected {addr}")
-    threading.Thread(target=handle_client, args=(conn, addr)).start()
+    ip = socket.gethostbyname(socket.gethostname())
+    print(ip)
+    port = int(input("PORT = "))
     
+    server.bind((ip, port))
+    server.listen()
+
+    print("Waiting ... ")
+    threading.Thread(target=updateJsonFile).start()
+    while True:
+        conn, addr = server.accept()
+        print(f"Connected {addr}")
+        threading.Thread(target=handle_client, args=(conn, addr)).start()
+
+except Exception as e:
+    print(e)
+finally:
+    server.close()

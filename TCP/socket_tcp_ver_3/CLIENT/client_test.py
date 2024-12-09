@@ -3,12 +3,21 @@ import os
 import threading
 import time
 import json
+import signal
+import sys
 
 FORMAT = "utf8"
 END = "<<end>>".encode(FORMAT)
 MSG_CLIENT_REQUIRE_FILE = 'client_requrie_file'
 ACK = "<<ack>>".encode(FORMAT)
 FORMAT = "utf8"
+
+def signal_handel(sig, frame):
+    delete = "\033[2K"
+    print(f"{delete}\r{'-' * 20}")
+    print("[STOP] Stop the program")
+    print(f"{delete}\r{'-' * 20}")
+    sys.exit(0)
 
 def getAvailablePort(ip = str(), start = int()):
     ports = []  
@@ -27,13 +36,9 @@ class p2p:
     ip = ""
     port = 0
     soc = None
-    format = "utf8"
-    ACK = "<<ack>>".encode(format)
     conn = None
     addr = None
-
     fileName = ""
-
     return_recv_data = b""
 
     def __init__(self, IP, PORT) -> None:
@@ -52,16 +57,13 @@ class p2p:
                 break
             except Exception as e:
                 print("Connecting ... ")
-    def sendData(self, conn, data = b"", fileName = str()):
-        conn.sendall(data)
-        conn.sendall(END)
 
     def recvData(self):
         data = b""
         size = int(self.conn.recv(100).decode())
         DONE = False
         while not DONE:
-            chunk = self.conn.recv(1024 * 1024)
+            chunk = self.conn.recv(65355)
             if chunk[-7:] == END:
                 DONE = True
                 chunk = chunk[:-7]
@@ -124,36 +126,6 @@ def recvFile(conn, fileName = str(), saveDir = str(), ip = str(), soc = socket, 
         soc[i].conn.close()
     soc = None
     
-def sendFile(conn, fileName, fileDir, ip, ports):
-    soc = []
-    for i in range(0, 4): # Ket noi voi 4 ket noi cua client da mo
-        socket = p2p(ip, ports[i])
-        socket.connect()
-        soc.append(socket)
-
-    data = b""
-    with open(fileDir, "rb") as f: # Mo file ghi data vao
-        data = f.read()
-
-    div = int(len(data) / 4) # Chia file ra thanh 4 chunk
-    chunk = []
-    for i in range(0, 3):
-        chunk.append(data[:div])
-        data = data[div:]
-    chunk.append(data)
-
-    thread = []
-    for i in range(0, 4): # Gui file thong qua 4 ket noi song song da mo
-        name = f"{fileName} part {i + 1}"
-        thread.append(threading.Thread(target=soc[i].sendData, args=(soc[i].soc, chunk[i], name))) # Phan luong 4 ket noi de co the gui cung luc
-        thread[i].start()
-    
-    for i in range(0, 4):
-        thread[i].join() # Doi cho den khi qua trinh gui hoan tat roi dong ket noi voi 4 ket noi tren
-        soc[i].soc.close()
-    soc = []
-        
-    
 def updateJsonFile(jsonDir):
     dir = jsonDir
     name = 'server_asset.json'
@@ -203,7 +175,6 @@ def updateInputFile(inputDir = str()): # Cap nhat file input
             print(f"{up}[+] {fileName} does not exist", end=f" | {down}")
         else:
             name = fileInfo[0]
-            # size = fileInfo[1]
             saveDir = f"client_asset/{name}"
             soc, ports = requireFile(client, fileName, server_ip, port)
             recvFile(client, fileName, saveDir, server_ip, soc, ports)
@@ -216,12 +187,16 @@ def start_client():
         updateInputFile('input.txt')
         time.sleep(5)
 
-# ip = socket.gethostbyname(socket.gethostname())
-server_ip = input("IP = ")
-print(server_ip)
-port = int(input("PORT = "))
+try:
+    signal.signal(signal.SIGINT, signal_handel)
+    server_ip = input("IP = ")
+    print(server_ip)
+    port = int(input("PORT = "))
 
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client.connect((server_ip, port))
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect((server_ip, port))
 
-start_client()
+    start_client()
+    client.close()
+except Exception as e:
+    print(e)
