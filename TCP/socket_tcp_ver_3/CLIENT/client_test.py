@@ -12,6 +12,9 @@ MSG_CLIENT_REQUIRE_FILE = 'client_requrie_file'
 ACK = "<<ack>>".encode(FORMAT)
 FORMAT = "utf8"
 
+def server_just_close():
+    pass
+
 def signal_handel(sig, frame):
     delete = "\033[2K"
     print(f"{delete}\r{'-' * 20}")
@@ -40,6 +43,7 @@ class p2p:
     addr = None
     fileName = ""
     return_recv_data = b""
+    isRecvingJsonFile = False
 
     def __init__(self, IP, PORT) -> None:
         self.ip = IP
@@ -53,41 +57,45 @@ class p2p:
         while True:
             try:
                 self.soc.connect((self.ip, self.port))
-                print("Connected !")
                 break
             except Exception as e:
-                print("Connecting ... ")
+                pass
 
     def recvData(self):
         data = b""
         size = int(self.conn.recv(100).decode())
         DONE = False
         while not DONE:
-            chunk = self.conn.recv(65355)
+            chunk = self.conn.recv(4096)
             if chunk[-7:] == END:
                 DONE = True
                 chunk = chunk[:-7]
             data += chunk
-            if ("client_asset.json" not in self.fileName):
+            if (self.isRecvingJsonFile == False):
                 part = int(self.fileName[-1:])
                 down = f"\033[{part}B"
                 up = f"\033[{part}A"
                 delete = "\033[2K"
-                print(f"\r{down}{delete}\rDownloading {self.fileName} ... {min(100, round((len(data) / size) * 100, 0))}%\r{up}",end="")
+                print(f"\r{down}{delete}\rDownloading {self.fileName} ... {min(100, round((len(data) / size) * 100, 2))}%\r{up}",end="")
         self.return_recv_data = data
         return data
         
-def requireFile(conn, fileName, ip, port):  
+def requireFile(conn, fileName, ip, port, isRecvingListFile = False):  
     
     soc = []
     client_ip = socket.gethostbyname(socket.gethostname())
-    msg = MSG_CLIENT_REQUIRE_FILE + '@' + fileName + '@' + str(client_ip)
+
+    if isRecvingListFile == True:
+        msg = MSG_CLIENT_REQUIRE_FILE + '@' + "<<sending_list_file>>" + '@' + str(client_ip)
+    else:
+        msg = MSG_CLIENT_REQUIRE_FILE + '@' + fileName + '@' + str(client_ip)        
 
     ports = getAvailablePort(client_ip, port + 1) # Lay cac port cua ip dang kha dung
 
     for i in range(0, 4): # Sau khi co duoc cac port kha dung, tien hanh tao 4 socket de server gui file ket noi
         new_soc = p2p(client_ip, ports[i])
         new_soc.fileName = f"{fileName} part {i + 1}"
+        new_soc.isRecvingJsonFile = isRecvingListFile
         soc.append(new_soc)
 
     for i in range(0, 4): # Cau hinh tin nhan gom "yeu cau gui file@ten file@port 1@port2@port 3@port 4"
@@ -97,6 +105,7 @@ def requireFile(conn, fileName, ip, port):
     thread = []
     for i in range(0, 4): # Tien hanh lang nghe cac ket noi
         thread.append(threading.Thread(target=soc[i].listen))
+        thread[i].daemon = True # This is let theard die when the main process stop
         thread[i].start()
 
     for i in range(0, 4): # Doi cho den khi server ket noi thanh cong den 4 ket noi song song
@@ -109,6 +118,7 @@ def recvFile(conn, fileName = str(), saveDir = str(), ip = str(), soc = socket, 
     for i in range(0, 4): # Nhan file tu 4 ket noi song song da mo o requireFile
         soc[i].fileName = f"{fileName} part {i + 1}"
         temp = threading.Thread(target=soc[i].recvData)
+        temp.daemon = True # This is let theard die when the main process stop
         temp.start()
         thread.append(temp)
 
@@ -129,7 +139,7 @@ def recvFile(conn, fileName = str(), saveDir = str(), ip = str(), soc = socket, 
 def updateJsonFile(jsonDir):
     dir = jsonDir
     name = 'server_asset.json'
-    soc, ports = requireFile(client, name, server_ip, port)
+    soc, ports = requireFile(client, name, server_ip, port, isRecvingListFile=True)
     recvFile(client, dir, dir, server_ip, soc, ports)
 
 def printJsonFile(fileDir):
@@ -142,7 +152,7 @@ def printJsonFile(fileDir):
     with open(fileDir, "rt") as f:
         jsonFile = list(json.load(f))
         for file in jsonFile:
-            print(f"{delete}\r{file["name"]}  -  {round(file["size"] / 1024, 0)}MB")
+            print(f"{delete}\r{file["name"]}  -  {round(file["size"] / 1024, 2)}MB")
             num_of_file += 1
         f.close()
     print(f"\033[{6 + num_of_file}A", end="")
@@ -178,14 +188,20 @@ def updateInputFile(inputDir = str()): # Cap nhat file input
             saveDir = f"client_asset/{name}"
             soc, ports = requireFile(client, fileName, server_ip, port)
             recvFile(client, fileName, saveDir, server_ip, soc, ports)
-        
+
 def start_client():
     print(f"Connect with {client}\n\n")
-    while True:
-        updateJsonFile('client_asset.json')
-        printJsonFile('client_asset.json')
-        updateInputFile('input.txt')
-        time.sleep(5)
+    # check_server_close = threading.Thread(target=checkIfServerIsClose)
+    # check_server_close.daemon = True
+    # check_server_close.start()
+    try:
+        while True:
+            updateJsonFile('client_asset.json')
+            printJsonFile('client_asset.json')
+            updateInputFile('input.txt')
+            time.sleep(5)
+    except:
+        print(f"[DISCONNECTED] Disconnected with server")
 
 try:
     signal.signal(signal.SIGINT, signal_handel)

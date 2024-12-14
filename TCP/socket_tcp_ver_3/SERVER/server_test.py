@@ -17,7 +17,7 @@ def signal_handel(sig, frame):
     print(f"{delete}\r{'-' * 20}")
     print("[STOP] Stop the program")
     print(f"{delete}\r{'-' * 20}")
-    sys.exit(0)
+    sys.exit()
 
 def min(a, b):
     if a < b:
@@ -62,14 +62,17 @@ class p2p:
             except Exception as e:
                 pass
     def sendData(self, conn, data = b"", fileName = str()):
-        size = f"{len(data)}"
-        for i in range(len(size), 100):
-            size = '0' + size
-        conn.send(size.encode(FORMAT))
-        time.sleep(1)
-        ###
-        conn.sendall(data)
-        conn.sendall(END)
+        try:
+            size = f"{len(data)}"
+            for i in range(len(size), 100):
+                size = '0' + size
+            conn.send(size.encode(FORMAT))
+            time.sleep(1)
+            ###
+            conn.sendall(data)
+            conn.sendall(END)
+        except:
+            pass
 
 def sendFile(conn, fileName, fileDir, ip, ports):
     soc = []
@@ -122,8 +125,8 @@ def handle_client(conn, addr):
             if msg[0] == MSG_CLIENT_REQUIRE_FILE:
                 fileName = msg[1]
                 fileDir = 'server_asset/' + fileName
-                if fileName == 'server_asset.json':
-                    fileDir =  fileName
+                if fileName == "<<sending_list_file>>" :
+                    fileDir = "server_asset.json"
 
                 client_ip = msg[2]
                 ports = []
@@ -151,13 +154,18 @@ try:
     
     server.bind((ip, port))
     server.listen()
-
     print("Waiting ... ")
-    threading.Thread(target=updateJsonFile).start()
+
+    thread_update_jsong = threading.Thread(target=updateJsonFile)
+    thread_update_jsong.daemon = True # This is let theard die when the main process stop
+    thread_update_jsong.start()
+
     while True:
         conn, addr = server.accept()
         print(f"Connected {addr}")
-        threading.Thread(target=handle_client, args=(conn, addr)).start()
+        client_thread = threading.Thread(target=handle_client, args=(conn, addr))
+        client_thread.daemon = True
+        client_thread.start()
 
 except Exception as e:
     print(e)
